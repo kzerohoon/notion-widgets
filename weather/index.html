@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>날씨</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #191919; --card: #202020; --line: #2f2f2f; --text: #e6e6e4; --muted: #9b9a97; --hi: #f2b482; --lo: #8ec0f5; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', system-ui, sans-serif; }
+  .wrap { height: 100%; display: flex; align-items: center; gap: 20px; padding: 14px 18px; }
+  .now { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .now svg { width: 52px; height: 52px; }
+  .temp { font-size: 34px; font-weight: 700; line-height: 1; }
+  .desc { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .place { font-size: 12px; color: var(--muted); }
+  .days { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; border-left: 1px solid var(--line); padding-left: 16px; min-width: 0; }
+  .day { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; }
+  .day svg { width: 24px; height: 24px; }
+  .d { color: var(--muted); }
+  .hi { color: var(--hi); }
+  .lo { color: var(--lo); }
+  .msg { color: var(--muted); font-size: 13px; }
+  @media (max-width: 380px) { .wrap { flex-direction: column; align-items: stretch; } .days { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 10px; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><span class="msg">날씨 불러오는 중…</span></div>
+<script>
+// 사용법: ?lat=37.57&lon=126.98&name=서울  (기본값: 서울)
+const q = new URLSearchParams(location.search);
+const lat = q.get('lat') || '37.5665';
+const lon = q.get('lon') || '126.9780';
+const name = (q.get('name') || '서울').replace(/[<>&"']/g, '');
+
+const ICON = {
+  sun: '<circle cx="12" cy="12" r="4.5" fill="#F5C451"/><g stroke="#F5C451" stroke-width="1.8" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g>',
+  partly: '<circle cx="9" cy="9" r="3.6" fill="#F5C451"/><path d="M8 19h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.6 1.3A2.9 2.9 0 0 0 8 19z" fill="#C9CDD3"/>',
+  cloud: '<path d="M7 19h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A3.5 3.5 0 0 0 7 19z" fill="#A9AEB6"/>',
+  fog: '<g stroke="#A9AEB6" stroke-width="2" stroke-linecap="round"><path d="M4 9h16M6 13h12M4 17h16"/></g>',
+  rain: '<path d="M7 14h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A3.5 3.5 0 0 0 7 14z" fill="#A9AEB6"/><g stroke="#5B9BFF" stroke-width="2" stroke-linecap="round"><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/></g>',
+  snow: '<path d="M7 14h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A3.5 3.5 0 0 0 7 14z" fill="#A9AEB6"/><g fill="#E6F0FF"><circle cx="8" cy="18" r="1.3"/><circle cx="12" cy="20" r="1.3"/><circle cx="16" cy="18" r="1.3"/></g>',
+  storm: '<path d="M7 14h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A3.5 3.5 0 0 0 7 14z" fill="#8C9199"/><path d="M12.5 14l-3 5h3l-1.5 4 4.5-6h-3l1.5-3z" fill="#F5C451"/>'
+};
+function kind(c) {
+  if (c === 0) return ['sun', '맑음'];
+  if (c === 1) return ['partly', '대체로 맑음'];
+  if (c === 2) return ['partly', '구름 조금'];
+  if (c === 3) return ['cloud', '흐림'];
+  if (c === 45 || c === 48) return ['fog', '안개'];
+  if (c >= 51 && c <= 67) return ['rain', '비'];
+  if (c >= 71 && c <= 77) return ['snow', '눈'];
+  if (c >= 80 && c <= 82) return ['rain', '소나기'];
+  if (c === 85 || c === 86) return ['snow', '눈'];
+  if (c >= 95) return ['storm', '뇌우'];
+  return ['cloud', '흐림'];
+}
+const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
+const DAY = ['일', '월', '화', '수', '목', '금', '토'];
+
+async function load() {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    '&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min' +
+    '&timezone=Asia%2FSeoul&forecast_days=5';
+  try {
+    const r = await fetch(url);
+    const w = await r.json();
+    const [k, desc] = kind(w.current.weather_code);
+    const days = w.daily.time.map((t, i) => {
+      const [dk] = kind(w.daily.weather_code[i]);
+      const label = i === 0 ? '오늘' : DAY[new Date(t + 'T00:00:00+09:00').getDay()];
+      return `<div class="day"><span class="d">${label}</span>${svg(dk)}` +
+        `<span class="hi">${Math.round(w.daily.temperature_2m_max[i])}°</span>` +
+        `<span class="lo">${Math.round(w.daily.temperature_2m_min[i])}°</span></div>`;
+    }).join('');
+    document.getElementById('app').innerHTML =
+      `<div class="now">${svg(k)}<div><div class="temp">${Math.round(w.current.temperature_2m)}°</div>` +
+      `<div class="desc">${desc}</div><div class="place">${name}</div></div></div>` +
+      `<div class="days">${days}</div>`;
+  } catch (e) {
+    document.getElementById('app').innerHTML = '<span class="msg">날씨를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</span>';
+  }
+}
+load();
+setInterval(load, 30 * 60 * 1000);
+</script>
+</body>
+</html>
